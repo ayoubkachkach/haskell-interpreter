@@ -33,6 +33,9 @@ evalI :: Evaluator
 evalI (I i) _ = (I i)
 evalI expr _  = error (errorMsg (Just expr) " Expected int literal.")
 
+evalEq :: Evaluator
+evalEq x y b = (B (eval x b) == (eval y b))
+
 evalV :: Evaluator
 evalV (V v) bindings = 
     case lookup v bindings of
@@ -81,4 +84,5 @@ eval :: Evaluator
 eval (I i) _            = (I i)
 eval (B b) _            = (B b)
 eval (V v) b            = evalV (V v) b
-eval expr b | isOp expr = evalOp expr b 
+eval expr b | isOp expr = eval (I i) _            = (I i)
+evalOp expr b 

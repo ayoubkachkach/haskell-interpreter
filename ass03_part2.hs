@@ -33,14 +33,18 @@ evalI :: Evaluator
 evalI (I i) _ = (I i)
 evalI expr _  = error (errorMsg (Just expr) " Expected int literal.")
 
-evalEq :: Evaluator
-evalEq x y b = (B (eval x b) == (eval y b))
-
 evalV :: Evaluator
 evalV (V v) bindings = 
     case lookup v bindings of
       Just val -> eval val bindings  -- found variable, lazy eval
       Nothing  -> error (errorMsg (Just (V v)) " Unbound variable.") -- undefined variable
+
+-- validOperand :: LExpr -> Bool
+-- (V _)            -> True
+-- (I _)            -> True
+-- (B _)            -> True
+-- expr | isOp expr -> True
+-- _                -> False
 
 extractOp :: LExpr -> Maybe (String, LExpr, LExpr)
 extractOp expr =
@@ -52,6 +56,14 @@ extractOp expr =
     (And a b)  -> Just ("And", a, b)
     (Or a b)   -> Just ("Or", a, b)
     otherwise  -> Nothing
+
+-- isValidOp String -> LExpr -> LExpr
+-- isValidOp opStr a b =
+--   let bool_ops = ["And", "Or"]
+--       bool_ops = ["And", "Or"]
+--   case (a, b) of
+--     ((B _), (B _)) | any (opStr==) bool_ops ->
+--     ((I _), (I _)) | any (opStr==) ["Add"] ->
 
 isOp :: LExpr -> Bool 
 isOp expr =
@@ -67,6 +79,15 @@ bOp :: (Bool -> Bool -> Bool) -> LExpr -> LExpr -> LExpr
 bOp op (B a) (B b) = (B (op a b))
 bOp _ _ _          = error (errorMsg Nothing " Couldn't resolve binary operation. Expected booleans.")
 
+evalEq :: Evaluator
+evalEq (Eq x y) bind = let a = eval x bind
+                           b = eval y bind
+                       in
+                        case (a, b) of
+                          ((B b1), (B b2)) -> (B (b1 == b2))
+                          ((I i1), (I i2)) -> (B (i1 == i2))
+                          (_, _)           -> error (errorMsg Nothing " Comparing incompatible types.")
+                          
 evalOp :: Evaluator
 evalOp expr bindings =
   let 
@@ -79,10 +100,19 @@ evalOp expr bindings =
                                  y = eval b bindings
                              in 
                                  op x y
-
+evalIf :: Evaluator
+evalIf (IF cond expT expF) b =
+  case eval cond b of
+    (B True)  -> eval expT b
+    (B False) -> eval expF b
+    _         -> error (errorMsg (Just cond) " Can't reduce condition to boolean.")
+    
 eval :: Evaluator
-eval (I i) _            = (I i)
-eval (B b) _            = (B b)
-eval (V v) b            = evalV (V v) b
-eval expr b | isOp expr = eval (I i) _            = (I i)
-evalOp expr b 
+eval expr b =
+  case expr of
+    (I _)            -> expr
+    (B _)            -> expr
+    (V _)            -> evalV expr b
+    (Eq _ _)         -> evalEq expr b
+    (IF _ _ _)       -> evalIf expr b
+    expr | isOp expr -> evalOp expr b 

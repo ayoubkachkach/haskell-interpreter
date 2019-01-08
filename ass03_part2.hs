@@ -1,26 +1,3 @@
-type Binding = [(Name, LExpr)]
-type Evaluator = LExpr -> Binding -> LExpr
-type Executor = LExpr -> Binding -> LExpr -> Binding
-
-type Name = String
-data LExpr =  V Name
-            | B Bool
-            | I Integer
-            | Eq LExpr LExpr
-            | Add LExpr LExpr
-            | Mult LExpr LExpr
-            | Sub LExpr LExpr
-            | Div LExpr LExpr
-            | And LExpr LExpr
-            | Or LExpr LExpr
-            | Not LExpr
-            | L Name LExpr
-            | FA LExpr LExpr
-            | IF LExpr LExpr LExpr
-            | LET (Name, LExpr) LExpr
-            deriving (Eq, Show)
-
-
 errorMsg :: Maybe LExpr -> String -> String
 errorMsg (Just a) extraMsg = "Error evaluating node (" ++ show a ++ ")." ++ extraMsg
 errorMsg Nothing extraMsg = "Error." ++ extraMsg
@@ -39,13 +16,12 @@ evalV (V v) bindings =
       Just val -> eval val bindings  -- found variable, lazy eval
       Nothing  -> error (errorMsg (Just (V v)) " Unbound variable.") -- undefined variable
 
--- validOperand :: LExpr -> Bool
--- (V _)            -> True
--- (I _)            -> True
--- (B _)            -> True
--- expr | isOp expr -> True
--- _                -> False
-
+evalNot :: Evaluator
+evalNot expr b =
+    case eval expr b of
+        (B b) -> (B (not b))
+        _     -> error (errorMsg (Just expr) " Expected boolean.")
+        
 extractOp :: LExpr -> Maybe (String, LExpr, LExpr)
 extractOp expr =
   case expr of
@@ -56,14 +32,6 @@ extractOp expr =
     (And a b)  -> Just ("And", a, b)
     (Or a b)   -> Just ("Or", a, b)
     otherwise  -> Nothing
-
--- isValidOp String -> LExpr -> LExpr
--- isValidOp opStr a b =
---   let bool_ops = ["And", "Or"]
---       bool_ops = ["And", "Or"]
---   case (a, b) of
---     ((B _), (B _)) | any (opStr==) bool_ops ->
---     ((I _), (I _)) | any (opStr==) ["Add"] ->
 
 isOp :: LExpr -> Bool 
 isOp expr =
@@ -106,6 +74,16 @@ evalIf (IF cond expT expF) b =
     (B True)  -> eval expT b
     (B False) -> eval expF b
     _         -> error (errorMsg (Just cond) " Can't reduce condition to boolean.")
+
+addOrReplace :: Eq k => k -> v -> [(k, v)] -> [(k, v)]
+addOrReplace key value assoc = (key,value):(filter ((key /=).fst) assoc)
+
+evalLet :: Evaluator
+evalLet expr bindings = 
+    case expr of
+        (LET (var, val) expr) -> eval expr (addOrReplace var val bindings)
+        _                     -> error (errorMsg (Just expr) " Expected valid LET expression.")
+
     
 eval :: Evaluator
 eval expr b =
@@ -115,4 +93,5 @@ eval expr b =
     (V _)            -> evalV expr b
     (Eq _ _)         -> evalEq expr b
     (IF _ _ _)       -> evalIf expr b
+    (LET _ _)        -> evalLet expr b
     expr | isOp expr -> evalOp expr b 

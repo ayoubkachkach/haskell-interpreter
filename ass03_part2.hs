@@ -21,7 +21,7 @@ evalNot expr b =
     case eval expr b of
         (B b) -> (B (not b))
         _     -> error (errorMsg (Just expr) " Expected boolean.")
-        
+
 extractOp :: LExpr -> Maybe (String, LExpr, LExpr)
 extractOp expr =
   case expr of
@@ -91,6 +91,7 @@ eval expr b =
     (I _)            -> expr
     (B _)            -> expr
     (V _)            -> evalV expr b
+    (Not _)          -> evalNot expr b
     (Eq _ _)         -> evalEq expr b
     (IF _ _ _)       -> evalIf expr b
     (LET _ _)        -> evalLet expr b

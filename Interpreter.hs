@@ -1,3 +1,31 @@
+module Interpreter where
+import Parser
+import System.IO
+
+-- type Binding = [(Name, LExpr)]
+-- type Evaluator = LExpr -> Binding -> LExpr
+-- type Executor = LExpr -> Binding -> LExpr -> Binding
+-- type Parser a = [String] -> (Maybe a, [String])
+
+-- type Name = String
+-- data LExpr =  V Name
+--             | B Bool
+--             | I Integer
+--             | Eq LExpr LExpr
+--             | Add LExpr LExpr
+--             | Mult LExpr LExpr
+--             | Sub LExpr LExpr
+--             | Div LExpr LExpr
+--             | And LExpr LExpr
+--             | Or LExpr LExpr
+--             | Not LExpr
+--             | L Name LExpr
+--             | FA LExpr LExpr
+--             | IF LExpr LExpr LExpr
+--             | LET (Name, LExpr) LExpr
+--             deriving (Eq, Show)
+
+
 errorMsg :: Maybe LExpr -> String -> String
 errorMsg (Just a) extraMsg = "Error evaluating node (" ++ show a ++ ")." ++ extraMsg
 errorMsg Nothing extraMsg = "Error." ++ extraMsg
@@ -15,12 +43,6 @@ evalV (V v) bindings =
     case lookup v bindings of
       Just val -> eval val bindings  -- found variable, lazy eval
       Nothing  -> error (errorMsg (Just (V v)) " Unbound variable.") -- undefined variable
-
-evalNot :: Evaluator
-evalNot expr b =
-    case eval expr b of
-        (B b) -> (B (not b))
-        _     -> error (errorMsg (Just expr) " Expected boolean.")
 
 extractOp :: LExpr -> Maybe (String, LExpr, LExpr)
 extractOp expr =
@@ -55,7 +77,13 @@ evalEq (Eq x y) bind = let a = eval x bind
                           ((B b1), (B b2)) -> (B (b1 == b2))
                           ((I i1), (I i2)) -> (B (i1 == i2))
                           (_, _)           -> error (errorMsg Nothing " Comparing incompatible types.")
-                          
+
+evalNot :: Evaluator
+evalNot expr b =
+    case eval expr b of
+        (B b) -> (B (not b))
+        _     -> error (errorMsg (Just expr) " Expected boolean.")
+        
 evalOp :: Evaluator
 evalOp expr bindings =
   let 
@@ -91,8 +119,50 @@ eval expr b =
     (I _)            -> expr
     (B _)            -> expr
     (V _)            -> evalV expr b
-    (Not _)          -> evalNot expr b
     (Eq _ _)         -> evalEq expr b
+    (FA _ _)         -> evalFA expr b
+    (L _ _)          -> expr
     (IF _ _ _)       -> evalIf expr b
     (LET _ _)        -> evalLet expr b
     expr | isOp expr -> evalOp expr b 
+
+betaReduce :: Evaluator
+betaReduce expr b = 
+  case expr of
+    (I _)            -> expr
+    (B _)            -> expr
+    (Not n)          -> (Not (betaReduce n b))
+    (Eq x y)         -> (Eq (betaReduce x b) (betaReduce y b))
+    (L x y)          -> (L x (betaReduce y b))
+    (IF x y z)       -> (IF (betaReduce x b) (betaReduce y b) (betaReduce z b))
+    (LET (v, x) y)   -> (LET (v, (betaReduce x b)) (betaReduce y b))
+    (FA x y)         -> (FA (betaReduce x b) (betaReduce y b))
+    expr | isOp expr -> let 
+                          Just (opStr, x, y) = extractOp expr
+                          opStrToOp  = [("Add", Add), ("Sub", Sub), ("Mult", Mult), ("Div", Div), ("And", And), ("Or", Or)]
+                          Just opConst = lookup opStr opStrToOp
+                        in 
+                          (opConst (betaReduce x b) (betaReduce y b))
+    (V v)            -> case lookup v b of 
+                          Nothing -> expr
+                          Just x  -> (betaReduce x b)
+
+evalFA :: Evaluator
+evalFA (FA f arg) b =
+  case eval f b of
+    (L var lamb) -> let 
+                      new_b = addOrReplace var arg b
+                      beta_reduced_lamb = betaReduce lamb new_b
+                    in
+                      eval beta_reduced_lamb new_b
+    _  -> error (errorMsg (Just f) " Couldn't reduce expr to lambda expression.")
+    
+evalFA expr  _ = error (errorMsg (Just expr) " Expected function application.")
+
+main :: IO ()
+main = let 
+          tokenizedCode = tokenize "(LET square = (L x . (Mult x x)) IN (LET sumSquares = (L a . (L b . (Add (square a) (square b)))) IN ((sumSquares 3) 4)))"
+          Just parsedCode = fst (parse tokenizedCode)
+          result = eval parsedCode []
+        in
+          putStrLn (show result) 
